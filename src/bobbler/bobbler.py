@@ -655,7 +655,11 @@ def main():
     print(f"  Eligible : {len(el)}\n  TZ offset: UTC{tz:+d}")
 
     if not el: return print("\nNothing to submit.")
-    
+
+    if args.dry_run:
+        print_preview(rows, tz)
+        return print("Dry run — nothing submitted.")
+
     try:
         if input(f"Submit {len(el)} scrobbles to Last.fm? [y/N] ").strip().lower() != "y": return
     except: return

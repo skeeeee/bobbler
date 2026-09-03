@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "bobbler"
 version = "1.0.0"
-description = "iPod .scrobbler.log editor and Last.fm submission tool"
+description = "iPod .scrobbler.log bobbler and Last.fm submission tool"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

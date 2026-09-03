@@ -19,10 +19,10 @@ pip install git+https://github.com/skeeeee/bobbler
 ## First run
 
 ```bash
-scrobbler --save-creds
+bobbler --save-creds
 ```
 
-Saves your Last.fm username, password, and timezone offset to `~/.scrobbler.cfg`.
+Saves your Last.fm username, password, and timezone offset to `~/.bobbler.cfg`.
 
 ## Usage
 
@@ -31,29 +31,29 @@ Saves your Last.fm username, password, and timezone offset to `~/.scrobbler.cfg`
 bobbler
 
 # Specify a file manually
-scrobbler -p /path/to/.scrobbler.log
+bobbler -p /path/to/.scrobbler.log
 
 # Preview without submitting
-scrobbler --dry-run
+bobbler --dry-run
 
 # Open the GUI editor
-scrobbler -e
+bobbler -e
 
 # Submit with timezone offset (if iPod clock is in local time, not UTC)
-scrobbler --tz 8
+bobbler --tz 8
 ```
 
 ## Background watcher (auto-popup on connect)
 
 ```bash
 # Install as a login startup item
-scrobbler-watch --install
+bobbler-watch --install
 
 # Remove startup item
-scrobbler-watch --uninstall
+bobbler-watch --uninstall
 
 # Run manually
-scrobbler-watch
+bobbler-watch
 ```
 
 Once installed, connecting your iPod will automatically show a popup asking whether to submit scrobbles or open the editor.
