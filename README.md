@@ -1,44 +1,71 @@
 # bobbler
 
-iPod `.scrobbler.log` editor and Last.fm submission tool. Two packages in one repo:
+iPod `.scrobbler.log` editor and Last.fm submission tool.
 
-| Package | Description | Install |
-|---|---|---|
-| `bobbler` | CLI tool + terminal watcher | `pip install "bobbler @ git+https://github.com/skeeeee/bobbler#subdirectory=bobbler"` |
-| `bobbler-tray` | Silent system tray app | `pip install "bobbler-tray @ git+https://github.com/skeeeee/bobbler#subdirectory=bobbler-tray"` |
+Automatically detects a connected iPod, shows a popup to confirm submission, and scrobbles your plays to Last.fm. Includes a full GUI editor for fixing timestamps and album runs caused by iPod clock resets.
 
----
-
-## bobbler (CLI)
+## Install
 
 ```bash
-pip install "bobbler @ git+https://github.com/skeeeee/bobbler#subdirectory=bobbler"
-
-bobbler --save-creds     # first time setup
-bobbler                  # auto-detect iPod and submit
-bobbler --dry-run        # preview without submitting
-bobbler -e               # open GUI editor
-bobbler -p <file>        # specify log file manually
-bobbler --tz 8           # apply UTC+8 offset before submitting
-bobbler-watch            # terminal watcher (needs window open)
+pipx install git+https://github.com/skeeeee/bobbler
 ```
 
-## bobbler-tray (system tray)
-
-Runs silently in the background. Shows a popup when your iPod is connected.
+Or with pip:
 
 ```bash
-pip install "bobbler-tray @ git+https://github.com/skeeeee/bobbler#subdirectory=bobbler-tray"
-
-bobbler-tray             # start (right-click icon → Start with system to enable autostart)
+pip install git+https://github.com/skeeeee/bobbler
 ```
 
-Installs `bobbler` automatically as a dependency.
+## First run
 
----
+```bash
+bobbler --save-creds
+```
+
+Saves your Last.fm username, password, and timezone offset to `~/.bobbler.cfg`.
+
+## Usage
+
+```bash
+# Auto-detect .scrobbler.log on connected iPod and submit
+bobbler
+
+# Specify a file manually
+bobbler -p /path/to/.scrobbler.log
+
+# Preview without submitting
+bobbler --dry-run
+
+# Open the GUI editor
+bobbler -e
+
+# Submit with timezone offset (if iPod clock is in local time, not UTC)
+bobbler --tz 8
+```
+
+## Background watcher (auto-popup on connect)
+
+```bash
+# Install as a login startup item
+bobbler-watch --install
+
+# Remove startup item
+bobbler-watch --uninstall
+
+# Run manually
+bobbler-watch
+```
+
+Once installed, connecting your iPod will automatically show a popup asking whether to submit scrobbles or open the editor.
+
+## Update
+
+```bash
+pipx upgrade bobbler
+```
 
 ## Requirements
 
 - Python 3.10+
-- `bobbler-tray` additionally requires `pystray` and `Pillow` (installed automatically)
-- tkinter — included with most Python installs. On Linux: `sudo apt install python3-tk`
+- No third-party dependencies (stdlib only)
+- tkinter (included with most Python installs; on Linux: `sudo apt install python3-tk`)

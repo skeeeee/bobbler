@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bobbler"
+version = "1.0.0"
+description = "iPod .scrobbler.log bobbler and Last.fm submission tool"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "skeeeee", email = "skeeeee@users.noreply.github.com" }]
+keywords = ["lastfm", "bobbler", "ipod", "music", "rockbox"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+
+# No third-party dependencies — stdlib only
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/skeeeee/bobbler"
+Repository = "https://github.com/skeeeee/bobbler"
+Issues = "https://github.com/skeeeee/bobbler/issues"
+
+[project.scripts]
+bobbler         = "bobbler.bobbler:cli"
+bobbler-watch   = "bobbler.bobbler_watch:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bobbler"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "README.md", "LICENSE"]
