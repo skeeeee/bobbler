@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scrobbler Log Editor</title>
+<style>
+  :root {
+    --bg: #0d0d0f;
+    --surface: #16161a;
+    --surface2: #1e1e24;
+    --border: #2a2a35;
+    --accent: #c084fc;
+    --accent-dim: #7c3aed33;
+    --warn: #f59e0b;
+    --warn-dim: #f59e0b22;
+    --error: #ef4444;
+    --error-dim: #ef444422;
+    --success: #22c55e;
+    --success-dim: #22c55e22;
+    --text: #e8e8f0;
+    --text-muted: #6b6b80;
+    --text-dim: #9898b0;
+    --mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    --sans: 'Inter', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; font-size: 14px; }
+
+  header { display: flex; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  header h1 { font-size: 15px; font-weight: 600; }
+  .pill { font-size: 11px; font-family: var(--mono); background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 2px 7px; }
+  .header-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+  #drop-zone { margin: 48px auto; max-width: 480px; border: 2px dashed var(--border); border-radius: 12px; padding: 56px 40px; text-align: center; cursor: pointer; transition: border-color .2s, background .2s; }
+  #drop-zone:hover, #drop-zone.drag-over { border-color: var(--accent); background: var(--accent-dim); }
+  #drop-zone .icon { font-size: 34px; margin-bottom: 14px; }
+  #drop-zone h2 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  #drop-zone p { color: var(--text-muted); font-size: 13px; }
+  #file-input { display: none; }
+
+  #app { display: none; flex-direction: column; height: calc(100vh - 57px); }
+
+  #toolbar { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; }
+  .stats { font-size: 12px; color: var(--text-muted); font-family: var(--mono); }
+  .stats b { color: var(--text); }
+  #search { margin-left: auto; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 5px 12px; font-size: 13px; width: 220px; outline: none; }
+  #search:focus { border-color: var(--accent); }
+
+  #table-wrap { flex: 1; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  thead th { position: sticky; top: 0; background: var(--surface); border-bottom: 1px solid var(--border); padding: 8px 12px; text-align: left; font-weight: 600; font-size: 10.5px; letter-spacing: .06em; color: var(--text-muted); text-transform: uppercase; cursor: pointer; user-select: none; white-space: nowrap; z-index: 1; }
+  thead th:hover { color: var(--text); }
+  thead th .sa { opacity: .4; margin-left: 3px; }
+  thead th.sorted .sa { opacity: 1; color: var(--accent); }
+
+  tbody tr { border-bottom: 1px solid #1e1e24; cursor: pointer; transition: background .1s; }
+  tbody tr:hover { background: var(--surface2); }
+  tbody tr.bad-date { background: var(--error-dim); }
+  tbody tr.bad-date:hover { background: #ef444430; }
+  tbody tr.overlap { background: var(--warn-dim); }
+  tbody tr.overlap:hover { background: #f59e0b28; }
+  tbody tr.edited { box-shadow: inset 3px 0 0 var(--success); }
+  tbody tr.album-run { border-left: 3px solid transparent; }
+
+  td { padding: 7px 12px; font-family: var(--mono); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  td.date-bad { color: var(--error); font-weight: 600; }
+  td.date-ok { color: var(--text-dim); }
+  td.badge-cell { width: 80px; }
+
+  .badge { display: inline-block; font-size: 10px; border-radius: 3px; padding: 1px 5px; font-weight: 700; letter-spacing: .04em; margin-right: 2px; }
+  .badge.ovl { background: var(--warn-dim); color: var(--warn); border: 1px solid var(--warn); }
+  .badge.bad { background: var(--error-dim); color: var(--error); border: 1px solid var(--error); }
+  .badge.run { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent); }
+
+  /* run color stripes */
+  .run-stripe-0 { border-left: 3px solid #c084fc; }
+  .run-stripe-1 { border-left: 3px solid #38bdf8; }
+  .run-stripe-2 { border-left: 3px solid #4ade80; }
+  .run-stripe-3 { border-left: 3px solid #fb923c; }
+  .run-stripe-4 { border-left: 3px solid #f472b6; }
+  .run-stripe-5 { border-left: 3px solid #facc15; }
+  .run-stripe-6 { border-left: 3px solid #a78bfa; }
+  .run-stripe-7 { border-left: 3px solid #34d399; }
+
+  /* Modal */
+  .overlay { display: none; position: fixed; inset: 0; background: #000b; z-index: 100; align-items: center; justify-content: center; }
+  .overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 560px; max-width: 95vw; max-height: 90vh; overflow-y: auto; padding: 26px; }
+  .modal h2 { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+  .track-meta { background: var(--surface2); border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px 18px; }
+  .track-meta .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 2px; }
+  .track-meta .val { font-family: var(--mono); font-size: 12.5px; }
+
+  .field-group { margin-bottom: 14px; }
+  .field-group label { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 5px; }
+  .field-group input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 7px 12px; font-family: var(--mono); font-size: 13px; outline: none; }
+  .field-group input:focus { border-color: var(--accent); }
+
+  .warn-box { background: var(--warn-dim); border: 1px solid var(--warn); border-radius: 6px; padding: 9px 14px; font-size: 12px; color: var(--warn); margin-bottom: 14px; }
+  .info-box { background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 6px; padding: 9px 14px; font-size: 12px; color: var(--accent); margin-bottom: 14px; }
+
+  .album-toggle { display: flex; align-items: flex-start; gap: 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; cursor: pointer; user-select: none; transition: border-color .2s; }
+  .album-toggle:hover { border-color: var(--accent); }
+  .album-toggle input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; margin-top: 2px; flex-shrink: 0; }
+  .album-toggle .al-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+  .album-toggle .al-sub { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+
+  .chain-preview { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 11.5px; font-family: var(--mono); max-height: 180px; overflow-y: auto; }
+  .chain-preview .cp-row { padding: 2px 0; color: var(--text-dim); }
+  .chain-preview .cp-row.cp-cur { color: var(--accent); font-weight: 600; }
+
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  button { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: opacity .15s; font-family: var(--sans); }
+  button:hover { opacity: .85; }
+  button.primary { background: var(--accent); color: #fff; }
+  button.secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  #legend { display: flex; align-items: center; gap: 16px; padding: 7px 16px; border-top: 1px solid var(--border); background: var(--surface); font-size: 11px; color: var(--text-muted); flex-wrap: wrap; }
+  .leg { display: flex; align-items: center; gap: 6px; }
+  .leg .dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  #lastfm-bar { display: none; align-items: center; gap: 12px; padding: 7px 16px; background: #130d1a; border-top: 1px solid #3d1560; font-size: 12px; }
+  #lastfm-bar.visible { display: flex; }
+  #lfm-status { color: var(--text-muted); }
+
+  /* confirm */
+  #confirm-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 22px 26px; max-width: 380px; width: 95vw; }
+  #confirm-box p { margin-bottom: 18px; line-height: 1.6; font-size: 13px; }
+  #confirm-box .actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Scrobbler Log Editor</h1>
+  <span class="pill">.scrobbler.log</span>
+  <div class="header-right">
+    <button class="secondary" id="btn-lastfm" style="display:none">⬆ Last.fm</button>
+    <button class="secondary" id="btn-save" style="display:none">💾 Save .log</button>
+    <button class="secondary" id="btn-reload" onclick="resetApp()" style="display:none">↩ New file</button>
+  </div>
+</header>
+
+<div id="drop-zone" onclick="document.getElementById('file-input').click()">
+  <div class="icon">🎵</div>
+  <h2>Drop your .scrobbler.log here</h2>
+  <p>or click to browse</p>
+  <input type="file" id="file-input" accept=".log,.tsv,.txt">
+</div>
+
+<div id="app">
+  <div id="toolbar">
+    <div class="stats">
+      <b id="stat-total">0</b> tracks &nbsp;·&nbsp;
+      <span style="color:var(--error)"><b id="stat-bad">0</b> bad dates</span> &nbsp;·&nbsp;
+      <span style="color:var(--warn)"><b id="stat-overlap">0</b> overlaps</span> &nbsp;·&nbsp;
+      <span style="color:var(--accent)"><b id="stat-runs">0</b> album runs</span>
+    </div>
+    <input type="text" id="search" placeholder="Search artist / track / album…">
+  </div>
+
+  <div id="batch-bar" style="display:none;align-items:center;gap:12px;padding:8px 16px;background:#1a1020;border-bottom:1px solid #3d1560;font-size:12px">
+    <span id="batch-count" style="color:var(--accent);font-weight:600"></span>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button class="secondary" id="btn-batch-chain" style="font-size:12px;padding:4px 12px">⏱ Consecutive plays…</button>
+      <button style="font-size:12px;padding:4px 12px;background:var(--error);color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer" id="btn-batch-delete">🗑 Delete selected</button>
+      <button class="secondary" id="btn-batch-cancel" style="font-size:12px;padding:4px 12px">✕ Cancel</button>
+    </div>
+  </div>
+
+  <div id="table-wrap">
+    <table id="main-table">
+      <thead>
+        <tr>
+          <th style="width:36px;text-align:center"><input type="checkbox" id="chk-all" title="Select all" style="accent-color:var(--accent);width:14px;height:14px"></th>
+          <th data-col="idx">#<span class="sa">↕</span></th>
+          <th data-col="artist">Artist<span class="sa">↕</span></th>
+          <th data-col="album">Album<span class="sa">↕</span></th>
+          <th data-col="track">Track<span class="sa">↕</span></th>
+          <th data-col="num">T#<span class="sa">↕</span></th>
+          <th data-col="timestamp">UTC<span class="sa">↕</span></th>
+          <th>Local</th>
+          <th data-col="duration">Dur<span class="sa">↕</span></th>
+          <th data-col="rating">Rtg<span class="sa">↕</span></th>
+          <th>Flags</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+  <div id="legend">
+    <div class="leg"><div class="dot" style="background:var(--error-dim);border:1px solid var(--error)"></div> Bad date (2000)</div>
+    <div class="leg"><div class="dot" style="background:var(--warn-dim);border:1px solid var(--warn)"></div> Overlapping</div>
+    <div class="leg"><div class="dot" style="background:var(--accent-dim);border:1px solid var(--accent)"></div> Album run</div>
+    <div class="leg"><div class="dot" style="background:transparent;border-left:3px solid var(--success);border-radius:0;width:3px;height:12px"></div> Edited</div>
+  </div>
+
+  <div id="lastfm-bar">
+    <span>🎵</span>
+    <span id="lfm-status">Not connected to Last.fm</span>
+    <label style="display:flex;align-items:center;gap:6px;color:var(--text-muted);font-size:12px;margin-left:auto">
+      Log TZ offset
+      <select id="lfm-tz-offset" title="Subtract this offset before sending to Last.fm. Only change if scrobbles appear at the wrong time. Most logs: leave at UTC+0." style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:3px 6px;font-size:12px;outline:none">
+        <option value="-12" >UTC-12</option><option value="-11" >UTC-11</option><option value="-10" >UTC-10</option><option value="-9" >UTC-9</option><option value="-8" >UTC-8</option><option value="-7" >UTC-7</option><option value="-6" >UTC-6</option><option value="-5" >UTC-5</option><option value="-4" >UTC-4</option><option value="-3" >UTC-3</option><option value="-2" >UTC-2</option><option value="-1" >UTC-1</option><option value="0" selected>UTC+0</option><option value="1" >UTC+1</option><option value="2" >UTC+2</option><option value="3" >UTC+3</option><option value="4" >UTC+4</option><option value="5" >UTC+5</option><option value="6" >UTC+6</option><option value="7" >UTC+7</option><option value="8" >UTC+8</option><option value="9" >UTC+9</option><option value="10" >UTC+10</option><option value="11" >UTC+11</option><option value="12" >UTC+12</option><option value="13" >UTC+13</option><option value="14" >UTC+14</option>
+      </select>
+    </label>
+    <button class="secondary" id="btn-lfm-login" style="font-size:12px;padding:4px 10px">Connect</button>
+    <button class="primary" id="btn-lfm-submit" style="font-size:12px;padding:4px 10px;display:none">Submit scrobbles</button>
+  </div>
+</div>
+
+<!-- Edit modal -->
+<div class="overlay" id="modal-overlay">
+  <div class="modal">
+    <h2 id="modal-title">Edit Scrobble</h2>
+    <div class="track-meta" id="track-meta"></div>
+    <div id="modal-warn"></div>
+    <div id="album-section"></div>
+    <div id="chain-preview-wrap" style="display:none">
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">Chain preview — timestamps will be set sequentially</div>
+      <div class="chain-preview" id="chain-preview"></div>
+    </div>
+    <div class="field-group">
+      <label>New Date & Time</label>
+      <input type="datetime-local" id="input-datetime" step="1">
+    </div>
+    <div class="field-group"><label>Artist</label><input type="text" id="input-artist"></div>
+    <div class="field-group"><label>Album</label><input type="text" id="input-album"></div>
+    <div class="field-group"><label>Track</label><input type="text" id="input-track"></div>
+    <div class="modal-actions">
+      <button class="danger" id="btn-delete" style="margin-right:auto;background:#ef4444;color:#fff">🗑 Delete</button>
+      <button class="secondary" onclick="closeModal()">Cancel</button>
+      <button class="primary" id="btn-apply">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm -->
+<div class="overlay" id="confirm-overlay">
+  <div id="confirm-box">
+    <p id="confirm-msg"></p>
+    <div class="actions">
+      <button class="secondary" id="confirm-no">Cancel</button>
+      <button class="primary" id="confirm-yes">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Last.fm login -->
+<div class="overlay" id="lfm-overlay">
+  <div class="modal" style="width:380px">
+    <h2>Connect to Last.fm</h2>
+
+    <div class="field-group" style="display:none"><label>API Key</label><input type="text" id="lfm-apikey" value="28c0154f421917604411cfa95131a21d"></div>
+    <div class="field-group" style="display:none"><label>API Secret</label><input type="text" id="lfm-apisecret" value="9ae5f35e884187c50cb315d550b183bc"></div>
+    <div class="field-group"><label>Username</label><input type="text" id="lfm-user"></div>
+    <div class="field-group"><label>Password</label><input type="password" id="lfm-pass"></div>
+    <div id="lfm-err" style="color:var(--error);font-size:12px;margin-bottom:10px;display:none"></div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="document.getElementById('lfm-overlay').classList.remove('open')">Cancel</button>
+      <button class="primary" id="btn-lfm-do-login">Login</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Constants ────────────────────────────────────────────────────────────────
+const BAD_TS   = 978307200; // 2001-01-01 — anything below is a clock-reset date
+const RUN_DELTA = 65;       // seconds tolerance for chain matching
+
+// ── State ────────────────────────────────────────────────────────────────────
+let scrobbles    = [];
+let displayOrder = [];
+let editingIdx   = null;
+let applyChain   = false;
+let sortCol      = 'timestamp';
+let sortDir      = 1;
+let filterText   = '';
+let runColorMap  = {};   // runId -> stripe index
+let lfmApiKey    = '';
+let lfmApiSecret = '';
+let lfmSk        = '';
+let lfmUser      = '';
+
+// ── Parse ────────────────────────────────────────────────────────────────────
+function parseLog(text) {
+  const rows = [];
+  for (const line of text.replace(/\r\n/g,'\n').split('\n')) {
+    if (!line.trim() || line.startsWith('#')) continue;
+    const p = line.split('\t');
+    if (p.length < 7) continue;
+    const ts = parseInt(p[6], 10);
+    if (isNaN(ts)) continue;
+    rows.push({
+      artist: p[0]||'', album: p[1]||'', track: p[2]||'',
+      num:    parseInt(p[3],10)||0,
+      dur:    parseInt(p[4],10)||0,
+      rating: p[5]||'L',
+      ts,
+      mbid:       p[7]||'',
+      originalTs: ts,
+      fileIdx:    rows.length,  // line order in original file
+      edited:     false,
+      overlap:    false,
+      badDate:    false,
+      runId:      null,   // set by buildChains
+    });
+  }
+  return rows;
+}
+
+// ── Chain detection ──────────────────────────────────────────────────────────
+// Algorithm:
+//   For each row with tracknum N, look for a row of the SAME artist+album
+//   with tracknum N+1 where |candidate.ts - (cur.ts + cur.dur)| <= RUN_DELTA.
+//   Build the longest chain starting from the earliest track number that
+//   has no predecessor in the same album. Assign each distinct chain a runId.
+//
+//   Handles:
+//   - Multiple resets causing multiple chains from the same album (each gets own runId)
+//   - Non-consecutive track numbers (skipped tracks): the chain breaks at the gap
+//   - Partial plays (album doesn't start at T1)
+
+function buildChains(rows) {
+  // Reset
+  rows.forEach(r => { r.runId = null; r.overlap = false; r.badDate = r.ts < BAD_TS; });
+
+  // Build lookup: (artist, album, num) -> [rows]
+  const byKey = {};
+  for (const r of rows) {
+    const k = `${r.artist}\0${r.album}\0${r.num}`;
+    (byKey[k] = byKey[k]||[]).push(r);
+  }
+
+  const visited = new Set();
+  let runCounter = 0;
+
+  // Sort by ts so we pick the earliest anchor when there are duplicates
+  const sorted = [...rows].sort((a,b) => a.ts - b.ts);
+
+  for (const anchor of sorted) {
+    if (visited.has(anchor)) continue;
+
+    // Try to extend backwards: is there a predecessor that would chain into anchor?
+    // We only start a new chain from anchor if no predecessor links to it.
+    const prevKey = `${anchor.artist}\0${anchor.album}\0${anchor.num - 1}`;
+    const prevCandidates = byKey[prevKey] || [];
+    const hasPredecessor = prevCandidates.some(p =>
+      !visited.has(p) && Math.abs(p.ts + p.dur - anchor.ts) <= RUN_DELTA
+    );
+    if (hasPredecessor) continue; // will be picked up when predecessor is processed
+
+    // Build chain forward from anchor
+    const chain = [anchor];
+    visited.add(anchor);
+    let cur = anchor;
+
+    while (true) {
+      const nextKey = `${cur.artist}\0${cur.album}\0${cur.num + 1}`;
+      const candidates = byKey[nextKey] || [];
+      const expected   = cur.ts + cur.dur;
+      let best = null;
+      let bestDelta = Infinity;
+      for (const c of candidates) {
+        if (visited.has(c)) continue;
+        const d = Math.abs(c.ts - expected);
+        if (d <= RUN_DELTA && d < bestDelta) { best = c; bestDelta = d; }
+      }
+      if (!best) break;
+      visited.add(best);
+      chain.push(best);
+      cur = best;
+    }
+
+    if (chain.length > 1) {
+      const rid = runCounter++;
+      chain.forEach(r => r.runId = rid);
+    }
+  }
+
+  // Overlap detection (after sort by ts)
+  const byTs = [...rows].sort((a,b) => a.ts - b.ts);
+  for (let i = 0; i < byTs.length - 1; i++) {
+    if (byTs[i].ts + byTs[i].dur > byTs[i+1].ts) {
+      byTs[i].overlap = true;
+      byTs[i+1].overlap = true;
+    }
+  }
+
+  // Build runColorMap
+  runColorMap = {};
+  let colorIdx = 0;
+  for (const r of rows) {
+    if (r.runId !== null && !(r.runId in runColorMap)) {
+      runColorMap[r.runId] = colorIdx++ % 8;
+    }
+  }
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function tsToStr(ts) {
+  // Always display as UTC
+  const d = new Date(ts * 1000);
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+
+function tsToLocal(ts) {
+  // Display adjusted by the log TZ offset dropdown
+  const offset = parseInt(document.getElementById('lfm-tz-offset')?.value || '0', 10);
+  const localTs = ts + offset * 3600;
+  const d = new Date(localTs * 1000);
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+function fmtDur(s) { return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function getSorted() {
+  const q = filterText.toLowerCase();
+  let idxs = scrobbles.map((_,i)=>i);
+  if (q) idxs = idxs.filter(i => {
+    const r = scrobbles[i];
+    return [r.artist,r.album,r.track].some(v => v.toLowerCase().includes(q));
+  });
+  idxs.sort((a,b) => {
+    const ra=scrobbles[a], rb=scrobbles[b];
+    let va,vb;
+    switch(sortCol){
+      case 'idx':       va=a; vb=b; break;
+      case 'artist':    va=ra.artist; vb=rb.artist; break;
+      case 'album':     va=ra.album;  vb=rb.album;  break;
+      case 'track':     va=ra.track;  vb=rb.track;  break;
+      case 'num':       va=ra.num;    vb=rb.num;    break;
+      case 'timestamp': va=ra.ts;     vb=rb.ts;     break;
+      case 'duration':  va=ra.dur;    vb=rb.dur;    break;
+      case 'rating':    va=ra.rating; vb=rb.rating; break;
+      default:          va=a; vb=b;
+    }
+    return (typeof va==='string' ? va.localeCompare(vb) : va-vb) * sortDir;
+  });
+  return idxs;
+}
+
+function renderTable() {
+  displayOrder = getSorted();
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  for (const idx of displayOrder) {
+    const r = scrobbles[idx];
+    const tr = document.createElement('tr');
+    const cls = [];
+    if (r.badDate)  cls.push('bad-date');
+    if (r.overlap)  cls.push('overlap');
+    if (r.edited)   cls.push('edited');
+    if (r.runId !== null) cls.push(`run-stripe-${runColorMap[r.runId]}`);
+    tr.className = cls.join(' ');
+    tr.dataset.idx = idx;
+    tr.onclick = (e) => { if (e.target.classList.contains('row-chk')) return; openModal(idx); };
+
+    const badges = [];
+    if (r.badDate)  badges.push('<span class="badge bad">2000</span>');
+    if (r.overlap)  badges.push('<span class="badge ovl">OVL</span>');
+    if (r.runId!==null) badges.push('<span class="badge run">RUN</span>');
+
+    tr.innerHTML = `
+      <td style="text-align:center;width:36px"><input type="checkbox" class="row-chk" data-idx="${idx}" style="accent-color:var(--accent);width:14px;height:14px"></td>
+      <td>${idx+1}</td>
+      <td style="color:var(--text-dim)" title="${esc(r.artist)}">${esc(r.artist)}</td>
+      <td title="${esc(r.album)}">${esc(r.album)}</td>
+      <td title="${esc(r.track)}">${esc(r.track)}</td>
+      <td style="color:var(--text-muted);text-align:right;padding-right:20px">${r.num||''}</td>
+      <td class="${r.badDate?'date-bad':'date-ok'}">${tsToStr(r.ts)}</td>
+      <td style="color:var(--text-muted)">${tsToLocal(r.ts)}</td>
+      <td style="color:var(--text-muted)">${fmtDur(r.dur)}</td>
+      <td style="color:var(--text-muted)">${esc(r.rating)}</td>
+      <td class="badge-cell">${badges.join('')}</td>
+    `;
+    // wire checkbox after innerHTML so the element exists
+    tr.querySelector('.row-chk').onclick = e => onRowCheckboxClick(e, idx);
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById('stat-total').textContent   = scrobbles.length;
+  document.getElementById('stat-bad').textContent     = scrobbles.filter(r=>r.badDate).length;
+  document.getElementById('stat-overlap').textContent = scrobbles.filter(r=>r.overlap).length;
+  const uniqueRuns = new Set(scrobbles.filter(r=>r.runId!==null).map(r=>r.runId));
+  document.getElementById('stat-runs').textContent    = uniqueRuns.size;
+  updateBatchBar();
+}
+
+function getCheckedIndices() {
+  return Array.from(document.querySelectorAll('.row-chk:checked')).map(cb => parseInt(cb.dataset.idx, 10));
+}
+
+function updateBatchBar() {
+  const checked = getCheckedIndices();
+  const bar = document.getElementById('batch-bar');
+  const allChk = document.getElementById('chk-all');
+  const total = document.querySelectorAll('.row-chk').length;
+  if (checked.length === 0) {
+    bar.style.display = 'none';
+    if (allChk) allChk.checked = false;
+  } else {
+    bar.style.display = 'flex';
+    document.getElementById('batch-count').textContent = `${checked.length} selected`;
+    if (allChk) allChk.indeterminate = checked.length > 0 && checked.length < total;
+    if (allChk && checked.length === total) { allChk.checked = true; allChk.indeterminate = false; }
+  }
+}
+
+// ── Get the chain for a given row ────────────────────────────────────────────
+function getChainForRow(idx) {
+  const r = scrobbles[idx];
+  if (r.runId === null) return null;
+  return scrobbles
+    .map((s,i) => ({s,i}))
+    .filter(({s}) => s.runId === r.runId)
+    .sort((a,b) => a.s.num - b.s.num);
+}
+
+// ── Modal ────────────────────────────────────────────────────────────────────
+function openModal(idx) {
+  editingIdx = idx;
+  applyChain = false;
+  const r = scrobbles[idx];
+
+  document.getElementById('modal-title').textContent = 'Edit Scrobble';
+  document.getElementById('track-meta').innerHTML = `
+    <div><div class="lbl">Artist</div><div class="val">${esc(r.artist)}</div></div>
+    <div><div class="lbl">Album</div><div class="val">${esc(r.album)}</div></div>
+    <div><div class="lbl">Track</div><div class="val">${esc(r.track)}</div></div>
+    <div><div class="lbl">Track #</div><div class="val">${r.num}</div></div>
+    <div><div class="lbl">Duration</div><div class="val">${fmtDur(r.dur)}</div></div>
+    <div><div class="lbl">Current (UTC)</div><div class="val">${tsToStr(r.ts)}</div></div>
+    <div><div class="lbl">Current (Local)</div><div class="val">${tsToLocal(r.ts)}</div></div>
+    <div><div class="lbl">Original (UTC)</div><div class="val">${tsToStr(r.originalTs)}</div></div>
+  `;
+
+  const warnDiv = document.getElementById('modal-warn');
+  if (r.badDate) {
+    warnDiv.innerHTML = `<div class="warn-box">⚠ Clock-reset date. Set the correct date below.</div>`;
+  } else {
+    warnDiv.innerHTML = `<div class="warn-box">This entry has a normal date. Confirm before changing.</div>`;
+  }
+
+  // Prefill datetime
+  const d   = new Date(r.ts * 1000);
+  const pad = n => String(n).padStart(2,'0');
+  if (!r.badDate) {
+    document.getElementById('input-datetime').value =
+      `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } else {
+    document.getElementById('input-datetime').value = '';
+  }
+  document.getElementById('input-artist').value = r.artist;
+  document.getElementById('input-album').value  = r.album;
+  document.getElementById('input-track').value  = r.track;
+
+  // Album run section
+  const chain = getChainForRow(idx);
+  const albumSec = document.getElementById('album-section');
+  const previewWrap = document.getElementById('chain-preview-wrap');
+
+  if (chain && chain.length > 1) {
+    // Find position of current row in chain
+    const posInChain = chain.findIndex(({i}) => i === idx);
+    albumSec.innerHTML = `
+      <label class="album-toggle">
+        <input type="checkbox" id="chk-chain">
+        <div>
+          <div class="al-title">Apply to full album run (${chain.length} tracks)</div>
+          <div class="al-sub">
+            "${esc(r.album)}" — detected as a continuous album play via track number sequencing.<br>
+            The new date will be set on the <b>first track</b> of the run; each subsequent track's timestamp will be chained by its duration.
+          </div>
+        </div>
+      </label>
+    `;
+    document.getElementById('chk-chain').onchange = e => {
+      applyChain = e.target.checked;
+      previewWrap.style.display = applyChain ? '' : 'none';
+      if (applyChain) renderChainPreview(chain, idx);
+    };
+
+    // Build static preview
+    previewWrap.style.display = 'none';
+    document.getElementById('chain-preview').innerHTML = '';
+  } else {
+    albumSec.innerHTML = '';
+    previewWrap.style.display = 'none';
+  }
+
+  document.getElementById('input-datetime').addEventListener('input', () => {
+    if (applyChain) {
+      const chain = getChainForRow(editingIdx);
+      if (chain) renderChainPreview(chain, editingIdx);
+    }
+  });
+
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function renderChainPreview(chain, curIdx) {
+  const dtVal = document.getElementById('input-datetime').value;
+  const baseTs = dtVal ? Math.floor(new Date(dtVal).getTime()/1000) : null;
+  const div = document.getElementById('chain-preview');
+  div.innerHTML = '';
+  // Chain is sorted by num; start from first track
+  const chainSorted = [...chain].sort((a,b) => a.s.num - b.s.num);
+  let cursor = baseTs;
+  for (const {s, i} of chainSorted) {
+    const isCur = i === curIdx;
+    const tsDisplay = cursor !== null ? tsToStr(cursor) : '(set date above)';
+    const row = document.createElement('div');
+    row.className = 'cp-row' + (isCur ? ' cp-cur' : '');
+    row.textContent = `T${String(s.num).padStart(2,' ')}  ${tsDisplay}  (${fmtDur(s.dur)})  ${s.track.slice(0,40)}`;
+    div.appendChild(row);
+    if (cursor !== null) cursor += s.dur;
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  editingIdx = null; applyChain = false;
+}
+
+
+document.getElementById('btn-delete').onclick = () => {
+  if (editingIdx === null) return;
+  const r = scrobbles[editingIdx];
+  confirm2(`Delete "${r.track}" by ${r.artist}? This cannot be undone.`, () => {
+    scrobbles.splice(editingIdx, 1);
+    buildChains(scrobbles);
+    renderTable();
+    closeModal();
+  });
+};
+document.getElementById('btn-apply').onclick = () => {
+  const dtVal  = document.getElementById('input-datetime').value;
+  const artist = document.getElementById('input-artist').value.trim();
+  const album  = document.getElementById('input-album').value.trim();
+  const track  = document.getElementById('input-track').value.trim();
+  if (!dtVal) { alert('Please set a date and time.'); return; }
+  const newTs = Math.floor(new Date(dtVal).getTime()/1000);
+  if (isNaN(newTs)) { alert('Invalid date.'); return; }
+
+  const r = scrobbles[editingIdx];
+
+  const doApply = () => {
+    if (applyChain) {
+      const chain = getChainForRow(editingIdx);
+      const sorted = [...chain].sort((a,b) => a.s.num - b.s.num);
+      let cursor = newTs;
+      for (const {s} of sorted) {
+        s.timestamp = cursor; s.ts = cursor;
+        s.edited = true;
+        cursor += s.dur;
+      }
+    } else {
+      r.ts = newTs; r.timestamp = newTs;
+      r.artist = artist; r.album = album; r.track = track;
+      r.edited = true;
+    }
+    buildChains(scrobbles);
+    renderTable();
+    closeModal();
+  };
+
+  if (r.badDate) {
+    doApply();
+  } else {
+    confirm2(`Change timestamp from\n"${tsToStr(r.ts)}"\nto\n"${tsToStr(newTs)}"?`, doApply);
+  }
+};
+
+// ── Sort/search ───────────────────────────────────────────────────────────────
+document.querySelectorAll('thead th[data-col]').forEach(th => {
+  th.onclick = () => {
+    const col = th.dataset.col;
+    if (sortCol===col) sortDir*=-1; else { sortCol=col; sortDir=1; }
+    document.querySelectorAll('thead th').forEach(t=>t.classList.remove('sorted'));
+    th.classList.add('sorted');
+    th.querySelector('.sa').textContent = sortDir===1?'↑':'↓';
+    renderTable();
+  };
+});
+document.getElementById('search').oninput = e => { filterText=e.target.value; renderTable(); };
+
+document.addEventListener('DOMContentLoaded', () => {
+  const tzSel = document.getElementById('lfm-tz-offset');
+  if (tzSel) tzSel.addEventListener('change', renderTable);
+});
+
+document.getElementById('chk-all').onclick = e => {
+  const checks = document.querySelectorAll('.row-chk');
+  checks.forEach(c => c.checked = e.target.checked);
+  updateBatchBar();
+};
+
+document.getElementById('btn-batch-cancel').onclick = () => {
+  document.querySelectorAll('.row-chk').forEach(c => c.checked = false);
+  document.getElementById('chk-all').checked = false;
+  updateBatchBar();
+};
+
+document.getElementById('btn-batch-delete').onclick = () => {
+  const idxs = getCheckedIndices();
+  if (!idxs.length) return;
+  confirm2(`Delete ${idxs.length} selected entr${idxs.length===1?'y':'ies'}? This cannot be undone.`, () => {
+    const toDelete = new Set(idxs);
+    scrobbles = scrobbles.filter((_,i) => !toDelete.has(i));
+    buildChains(scrobbles);
+    renderTable();
+  });
+};
+
+// ── Selection order tracking ─────────────────────────────────────────────────
+let selectionOrder = []; // stores scrobble indices in the order they were checked
+
+function onRowCheckboxClick(e, idx) {
+  e.stopPropagation();
+  if (e.target.checked) {
+    if (!selectionOrder.includes(idx)) selectionOrder.push(idx);
+  } else {
+    selectionOrder = selectionOrder.filter(i => i !== idx);
+  }
+  updateBatchBar();
+}
+
+// patch getCheckedIndices to also prune selectionOrder
+const _origGetChecked = getCheckedIndices;
+
+function getSortedForChain(mode) {
+  const idxs = getCheckedIndices();
+  if (mode === 'tracknum') {
+    return [...idxs].sort((a,b) => (scrobbles[a].num||0) - (scrobbles[b].num||0));
+  } else if (mode === 'fileline') {
+    // original file index = position in scrobbles array (parsed in file order, sorted by ts after)
+    // We store originalFileIdx during parse; fall back to current array index
+    return [...idxs].sort((a,b) => (scrobbles[a].fileIdx||a) - (scrobbles[b].fileIdx||b));
+  } else { // selected
+    // keep only idxs that are in selectionOrder, in order; append any not tracked
+    const ordered = selectionOrder.filter(i => idxs.includes(i));
+    const rest = idxs.filter(i => !ordered.includes(i));
+    return [...ordered, ...rest];
+  }
+}
+
+function updateChainPreview() {
+  const dtVal = document.getElementById('chain-modal-dt').value;
+  const mode  = document.querySelector('input[name="chain-order"]:checked')?.value || 'fileline';
+  const preview = document.getElementById('chain-modal-preview');
+  const list    = document.getElementById('chain-modal-preview-list');
+  if (!dtVal) { preview.style.display = 'none'; return; }
+  const baseTs = Math.floor(new Date(dtVal).getTime() / 1000);
+  if (isNaN(baseTs)) { preview.style.display = 'none'; return; }
+  const sorted = getSortedForChain(mode);
+  preview.style.display = '';
+  list.innerHTML = '';
+  let cursor = baseTs;
+  for (const i of sorted) {
+    const r = scrobbles[i];
+    const row = document.createElement('div');
+    row.className = 'cp-row';
+    row.textContent = `T${String(r.num||'?').padStart(2,' ')}  ${tsToStr(cursor)}  (${fmtDur(r.dur)})  ${r.track.slice(0,45)}`;
+    list.appendChild(row);
+    cursor += r.dur;
+  }
+}
+
+document.getElementById('btn-batch-chain').onclick = () => {
+  const idxs = getCheckedIndices();
+  if (!idxs.length) return;
+  document.getElementById('chain-modal-count').textContent = idxs.length + (idxs.length === 1 ? ' entry' : ' entries');
+  document.getElementById('chain-modal-dt').value = '';
+  document.getElementById('chain-modal-preview').style.display = 'none';
+  document.getElementById('chain-modal-overlay').classList.add('open');
+};
+
+// Wire chain modal elements after DOM is fully parsed
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('chain-modal-dt').addEventListener('input', updateChainPreview);
+  document.querySelectorAll('input[name="chain-order"]').forEach(r => r.addEventListener('change', updateChainPreview));
+
+  document.getElementById('btn-chain-modal-apply').onclick = () => {
+    const dtVal = document.getElementById('chain-modal-dt').value;
+    if (!dtVal) { alert('Set a start date/time.'); return; }
+    const baseTs = Math.floor(new Date(dtVal).getTime() / 1000);
+    if (isNaN(baseTs)) { alert('Invalid date.'); return; }
+    const mode   = document.querySelector('input[name="chain-order"]:checked')?.value || 'fileline';
+    const sorted = getSortedForChain(mode);
+    let cursor = baseTs;
+    for (const i of sorted) {
+      scrobbles[i].ts = cursor;
+      scrobbles[i].edited = true;
+      cursor += scrobbles[i].dur;
+    }
+    buildChains(scrobbles);
+    renderTable();
+    document.getElementById('chain-modal-overlay').classList.remove('open');
+    document.querySelectorAll('.row-chk').forEach(c => c.checked = false);
+    document.getElementById('chk-all').checked = false;
+    selectionOrder = [];
+    updateBatchBar();
+  };
+});
+
+// ── Confirm ───────────────────────────────────────────────────────────────────
+let _cb = null;
+function confirm2(msg, cb) {
+  document.getElementById('confirm-msg').textContent = msg;
+  _cb = cb;
+  document.getElementById('confirm-overlay').classList.add('open');
+}
+document.getElementById('confirm-yes').onclick = () => {
+  document.getElementById('confirm-overlay').classList.remove('open');
+  if (_cb) { _cb(); _cb=null; }
+};
+document.getElementById('confirm-no').onclick = () => {
+  document.getElementById('confirm-overlay').classList.remove('open'); _cb=null;
+};
+
+// ── File I/O ──────────────────────────────────────────────────────────────────
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    scrobbles = parseLog(e.target.result);
+    if (!scrobbles.length) { alert('No valid scrobble entries found.'); return; }
+    buildChains(scrobbles);
+    document.getElementById('drop-zone').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    ['btn-save','btn-reload','btn-lastfm'].forEach(id => document.getElementById(id).style.display='');
+    document.getElementById('lastfm-bar').classList.add('visible');
+    renderTable();
+  };
+  reader.readAsText(file);
+}
+
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(f) handleFile(f); });
+document.getElementById('file-input').onchange = e => { if(e.target.files[0]) handleFile(e.target.files[0]); };
+
+document.getElementById('btn-save').onclick = () => {
+  confirm2(`Save ${scrobbles.length} entries to .scrobbler.log?\n\nReplace the file on your iPod with the downloaded file.`, () => {
+    const hdr = '#AUDIOSCROBBLER/1.1\n#TZ/UNKNOWN\n#CLIENT/Rockbox .scrobbler.log\n#ARTIST\t#ALBUM\t#TITLE\t#TRACKNUM\t#LENGTH\t#RATING\t#TIMESTAMP\t#MUSICBRAINZ_TRACKID\n';
+    const lines = scrobbles.map(r => [r.artist,r.album,r.track,r.num,r.dur,r.rating,r.ts,r.mbid].join('\t'));
+    const blob = new Blob([hdr+lines.join('\n')+'\n'], {type:'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download='.scrobbler.log'; a.click();
+  });
+};
+
+function resetApp() {
+  scrobbles=[]; displayOrder=[]; selectionOrder=[];
+  document.getElementById('drop-zone').style.display='';
+  document.getElementById('app').style.display='none';
+  ['btn-save','btn-reload','btn-lastfm'].forEach(id=>document.getElementById(id).style.display='none');
+  document.getElementById('lastfm-bar').classList.remove('visible');
+  document.getElementById('file-input').value='';
+}
+
+// ── Last.fm ───────────────────────────────────────────────────────────────────
+function md5(s){
+  var hc="0123456789abcdef";
+  function rh(n){var j,s="";for(j=0;j<=3;j++)s+=hc.charAt((n>>(j*8+4))&0xF)+hc.charAt((n>>(j*8))&0xF);return s;}
+  function ad(x,y){var l=(x&0xFFFF)+(y&0xFFFF),m=(x>>16)+(y>>16)+(l>>16);return(m<<16)|(l&0xFFFF);}
+  function rl(n,c){return(n<<c)|(n>>>(32-c));}
+  function cm(q,a,b,x,s,t){return ad(rl(ad(ad(a,q),ad(x,t)),s),b);}
+  function ff(a,b,c,d,x,s,t){return cm((b&c)|((~b)&d),a,b,x,s,t);}
+  function gg(a,b,c,d,x,s,t){return cm((b&d)|(c&(~d)),a,b,x,s,t);}
+  function hh(a,b,c,d,x,s,t){return cm(b^c^d,a,b,x,s,t);}
+  function ii(a,b,c,d,x,s,t){return cm(c^(b|(~d)),a,b,x,s,t);}
+  function sb(x){var i,nb=((x.length+8)>>6)+1,bl=new Array(nb*16);for(i=0;i<nb*16;i++)bl[i]=0;for(i=0;i<x.length;i++)bl[i>>2]|=x.charCodeAt(i)<<((i%4)*8);bl[i>>2]|=0x80<<((i%4)*8);bl[nb*16-2]=x.length*8;return bl;}
+  var i,x=sb(s),a=1732584193,b=-271733879,c=-1732584194,d=271733878,oa,ob,oc,od;
+  for(i=0;i<x.length;i+=16){oa=a;ob=b;oc=c;od=d;
+  a=ff(a,b,c,d,x[i],7,-680876936);d=ff(d,a,b,c,x[i+1],12,-389564586);c=ff(c,d,a,b,x[i+2],17,606105819);b=ff(b,c,d,a,x[i+3],22,-1044525330);
+  a=ff(a,b,c,d,x[i+4],7,-176418897);d=ff(d,a,b,c,x[i+5],12,1200080426);c=ff(c,d,a,b,x[i+6],17,-1473231341);b=ff(b,c,d,a,x[i+7],22,-45705983);
+  a=ff(a,b,c,d,x[i+8],7,1770035416);d=ff(d,a,b,c,x[i+9],12,-1958414417);c=ff(c,d,a,b,x[i+10],17,-42063);b=ff(b,c,d,a,x[i+11],22,-1990404162);
+  a=ff(a,b,c,d,x[i+12],7,1804603682);d=ff(d,a,b,c,x[i+13],12,-40341101);c=ff(c,d,a,b,x[i+14],17,-1502002290);b=ff(b,c,d,a,x[i+15],22,1236535329);
+  a=gg(a,b,c,d,x[i+1],5,-165796510);d=gg(d,a,b,c,x[i+6],9,-1069501632);c=gg(c,d,a,b,x[i+11],14,643717713);b=gg(b,c,d,a,x[i],20,-373897302);
+  a=gg(a,b,c,d,x[i+5],5,-701558691);d=gg(d,a,b,c,x[i+10],9,38016083);c=gg(c,d,a,b,x[i+15],14,-660478335);b=gg(b,c,d,a,x[i+4],20,-405537848);
+  a=gg(a,b,c,d,x[i+9],5,568446438);d=gg(d,a,b,c,x[i+14],9,-1019803690);c=gg(c,d,a,b,x[i+3],14,-187363961);b=gg(b,c,d,a,x[i+8],20,1163531501);
+  a=gg(a,b,c,d,x[i+13],5,-1444681467);d=gg(d,a,b,c,x[i+2],9,-51403784);c=gg(c,d,a,b,x[i+7],14,1735328473);b=gg(b,c,d,a,x[i+12],20,-1926607734);
+  a=hh(a,b,c,d,x[i+5],4,-378558);d=hh(d,a,b,c,x[i+8],11,-2022574463);c=hh(c,d,a,b,x[i+11],16,1839030562);b=hh(b,c,d,a,x[i+14],23,-35309556);
+  a=hh(a,b,c,d,x[i+1],4,-1530992060);d=hh(d,a,b,c,x[i+4],11,1272893353);c=hh(c,d,a,b,x[i+7],16,-155497632);b=hh(b,c,d,a,x[i+10],23,-1094730640);
+  a=hh(a,b,c,d,x[i+13],4,681279174);d=hh(d,a,b,c,x[i],11,-358537222);c=hh(c,d,a,b,x[i+3],16,-722521979);b=hh(b,c,d,a,x[i+6],23,76029189);
+  a=hh(a,b,c,d,x[i+9],4,-640364487);d=hh(d,a,b,c,x[i+12],11,-421815835);c=hh(c,d,a,b,x[i+15],16,530742520);b=hh(b,c,d,a,x[i+2],23,-995338651);
+  a=ii(a,b,c,d,x[i],6,-198630844);d=ii(d,a,b,c,x[i+7],10,1126891415);c=ii(c,d,a,b,x[i+14],15,-1416354905);b=ii(b,c,d,a,x[i+5],21,-57434055);
+  a=ii(a,b,c,d,x[i+12],6,1700485571);d=ii(d,a,b,c,x[i+3],10,-1894986606);c=ii(c,d,a,b,x[i+10],15,-1051523);b=ii(b,c,d,a,x[i+1],21,-2054922799);
+  a=ii(a,b,c,d,x[i+8],6,1873313359);d=ii(d,a,b,c,x[i+15],10,-30611744);c=ii(c,d,a,b,x[i+6],15,-1560198380);b=ii(b,c,d,a,x[i+13],21,1309151649);
+  a=ii(a,b,c,d,x[i+4],6,-145523070);d=ii(d,a,b,c,x[i+11],10,-1120210379);c=ii(c,d,a,b,x[i+2],15,718787259);b=ii(b,c,d,a,x[i+9],21,-343485551);
+  a=ad(a,oa);b=ad(b,ob);c=ad(c,oc);d=ad(d,od);}
+  return rh(a)+rh(b)+rh(c)+rh(d);
+}
+
+function strToUtf8(str) {
+  // Encode a JS string to a UTF-8 byte string for correct md5 hashing
+  return unescape(encodeURIComponent(str));
+}
+
+function buildSig(params, secret) {
+  const keys = Object.keys(params).filter(k=>k!=='format').sort();
+  const raw  = keys.map(k=>k+params[k]).join('') + secret;
+  return md5(strToUtf8(raw));
+}
+
+document.getElementById('btn-lastfm').onclick =
+document.getElementById('btn-lfm-login').onclick = () => document.getElementById('lfm-overlay').classList.add('open');
+
+document.getElementById('btn-lfm-do-login').onclick = async () => {
+  const apiKey = document.getElementById('lfm-apikey').value.trim();
+  const apiSec = document.getElementById('lfm-apisecret').value.trim();
+  const user   = document.getElementById('lfm-user').value.trim();
+  const pass   = document.getElementById('lfm-pass').value;
+  const errDiv = document.getElementById('lfm-err');
+  errDiv.style.display = 'none';
+  if (!apiKey||!apiSec||!user||!pass) { errDiv.textContent='All fields required.'; errDiv.style.display=''; return; }
+
+  const sigParams = { method:'auth.getMobileSession', api_key:apiKey, username:user, password:pass };
+  const sigKeys = Object.keys(sigParams).sort();
+  const sigStr  = sigKeys.map(k => k + sigParams[k]).join('') + apiSec;
+  const sigHash = md5(strToUtf8(sigStr));
+
+  const params = { ...sigParams, api_sig: sigHash, format: 'json' };
+
+  // Debug: show exactly what we're sending (shown in the error div until success)
+  errDiv.style.display = '';
+  errDiv.style.color = 'var(--text-muted)';
+  errDiv.textContent = `Sig string: ${sigStr.replace(pass, '***').replace(apiSec, '***')} → ${sigHash}`;
+
+  try {
+    const body = Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+    const res  = await fetch('https://ws.audioscrobbler.com/2.0/', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
+    const raw  = await res.text();
+    let data;
+    try { data = JSON.parse(raw); } catch(e) { throw new Error(`Non-JSON response: ${raw.slice(0,200)}`); }
+    if (data.error) throw new Error(`Error ${data.error}: ${data.message}`);
+    lfmApiKey = apiKey; lfmApiSecret = apiSec;
+    lfmSk = data.session.key; lfmUser = data.session.name;
+    document.getElementById('lfm-overlay').classList.remove('open');
+    document.getElementById('lfm-status').textContent = `Connected as ${lfmUser}`;
+    document.getElementById('btn-lfm-login').style.display = 'none';
+    document.getElementById('btn-lfm-submit').style.display = '';
+    errDiv.style.display = 'none';
+  } catch(e) { errDiv.textContent=`${e.message}`; errDiv.style.color='var(--error)'; errDiv.style.display=''; }
+};
+
+document.getElementById('btn-lfm-submit').onclick = () => {
+  if (!lfmSk) { alert('Not connected.'); return; }
+  const eligible = scrobbles.filter(r => !r.badDate && r.rating !== 'S');
+  if (!eligible.length) { alert('No eligible scrobbles. Fix bad dates first.'); return; }
+
+  // Open preview modal
+  const offset = parseInt(document.getElementById('lfm-tz-offset').value, 10);
+  const noteEl = document.getElementById('submit-tz-note');
+  if (offset === 0) {
+    noteEl.style.cssText = 'background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);padding:9px 14px;border-radius:6px;font-size:12px;line-height:1.5;margin-bottom:14px';
+    noteEl.innerHTML = '<b>No timezone adjustment (UTC+0)</b> — timestamps submitted exactly as stored in the log.';
+  } else {
+    noteEl.style.cssText = 'background:var(--warn-dim);border:1px solid var(--warn);color:var(--warn);padding:9px 14px;border-radius:6px;font-size:12px;line-height:1.5;margin-bottom:14px';
+    noteEl.innerHTML = `<b>Offset: UTC${offset>0?'+':''}${offset}</b> — timestamps will be shifted by ${offset>0?'-':'+'}${Math.abs(offset)}h before submitting.`;
+  }
+
+  const rows = eligible.length <= 10
+    ? eligible.map(r => ({ r, gap: false }))
+    : [
+        ...eligible.slice(0, 5).map(r => ({ r, gap: false })),
+        { gap: true },
+        ...eligible.slice(-5).map(r => ({ r, gap: false })),
+      ];
+
+  const tbody = document.getElementById('submit-preview-body');
+  tbody.innerHTML = '';
+  for (const item of rows) {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--border)';
+    if (item.gap) {
+      tr.innerHTML = `<td colspan="4" style="text-align:center;padding:8px;color:var(--text-muted);font-size:11px;font-family:var(--sans)">… ${eligible.length - 10} more entries …</td>`;
+    } else {
+      const { r } = item;
+      const storedStr    = tsToStr(r.ts);
+      const submittedStr = tsToStr(r.ts - offset * 3600);
+      const changed      = offset !== 0;
+      tr.innerHTML = `
+        <td style="padding:6px 10px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.artist)}">${esc(r.artist)}</td>
+        <td style="padding:6px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.track)}">${esc(r.track)}</td>
+        <td style="padding:6px 10px;color:var(--text-dim)">${storedStr}</td>
+        <td style="padding:6px 10px;color:${changed?'var(--warn)':'var(--success)'};font-weight:${changed?'600':'normal'}">${submittedStr}</td>
+      `;
+    }
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById('submit-preview-count').textContent =
+    `${eligible.length} scrobbles total · ${scrobbles.filter(r=>r.badDate).length} bad-date excluded · ${scrobbles.filter(r=>r.rating==='S').length} skipped excluded`;
+  document.getElementById('submit-preview-overlay').classList.add('open');
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btn-submit-confirm').onclick = () => {
+    document.getElementById('submit-preview-overlay').classList.remove('open');
+    const eligible = scrobbles.filter(r => !r.badDate && r.rating !== 'S');
+    doSubmit(eligible);
+  };
+});
+
+async function doSubmit(eligible) {
+    const API = 'https://ws.audioscrobbler.com/2.0/';
+    const BATCH = 50;
+    let ok=0, fail=0;
+    const errors = []; // collect per-track rejection reasons
+    document.getElementById('lfm-status').textContent = 'Submitting…';
+
+    for (let i=0; i<eligible.length; i+=BATCH) {
+      const batch = eligible.slice(i, i+BATCH);
+      const params = { method:'track.scrobble', api_key:lfmApiKey, sk:lfmSk };
+      batch.forEach((r,j) => {
+        const tzOffset = parseInt(document.getElementById('lfm-tz-offset').value, 10);
+        const adjustedTs = r.ts - (tzOffset * 3600);
+        params[`artist[${j}]`]=r.artist; params[`track[${j}]`]=r.track;
+        params[`album[${j}]`]=r.album;   params[`timestamp[${j}]`]=adjustedTs;
+        params[`duration[${j}]`]=r.dur;
+      });
+      // Sign only non-indexed params (method, api_key, sk)
+      // Last.fm batch scrobble: indexed params like artist[0] are excluded from sig
+      const sigKeys = Object.keys(params).filter(k => k !== 'format').sort();
+      const sigStr  = sigKeys.map(k => k + params[k]).join('') + lfmApiSecret;
+      params.api_sig = md5(strToUtf8(sigStr));
+      params.format  = 'json';
+      try {
+        const body2 = Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+        console.log('[scrobble] body (first 300):', body2.slice(0, 300));
+        const res  = await fetch(API, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:body2});
+        const raw  = await res.text();
+        console.log('[scrobble] raw response:', raw.slice(0, 500));
+        let data;
+        try { data = JSON.parse(raw); } catch(e) { throw new Error(`Non-JSON response: ${raw.slice(0,120)}`); }
+
+        // Top-level API error (e.g. bad session, invalid sig)
+        if (data.error) {
+          errors.push(`API Error ${data.error}: ${data.message}`);
+          fail += batch.length;
+          continue;
+        }
+
+        const attr = data?.scrobbles?.['@attr'] || {};
+        const acc  = parseInt(attr.accepted || 0, 10);
+        const ign  = parseInt(attr.ignored  || 0, 10);
+        ok   += acc;
+        fail += ign;
+
+        // Per-track ignored reasons
+        if (ign > 0) {
+          const scrobbleList = data?.scrobbles?.scrobble;
+          const items = Array.isArray(scrobbleList) ? scrobbleList : (scrobbleList ? [scrobbleList] : []);
+          for (const s of items) {
+            const code = s?.ignoredMessage?.code;
+            const msg  = s?.ignoredMessage?.['#text'] || s?.ignoredMessage;
+            if (code && code !== '0') {
+              const reasons = {
+                '1': 'Artist ignored (artist name filtered by Last.fm)',
+                '2': 'Track ignored (track name filtered by Last.fm)',
+                '3': 'Timestamp too old (more than 2 weeks in the past)',
+                '4': 'Timestamp too new (more than 2 minutes in the future)',
+                '5': 'Daily scrobble limit exceeded',
+              };
+              errors.push(`"${s?.track?.['#text']||'?'}" by ${s?.artist?.['#text']||'?'} — ${reasons[code] || `Ignored (code ${code}): ${msg}`}`);
+            }
+          }
+        }
+      } catch(e) {
+        errors.push(`Batch ${i/BATCH+1} failed: ${e.message}`);
+        fail += batch.length;
+      }
+      document.getElementById('lfm-status').textContent = `Submitting… ${Math.min(i+BATCH,eligible.length)}/${eligible.length}`;
+    }
+
+    // Final status
+    const statusEl = document.getElementById('lfm-status');
+    if (fail === 0) {
+      statusEl.textContent = `✓ All ${ok} scrobbles accepted`;
+      statusEl.style.color = 'var(--success)';
+    } else if (ok === 0) {
+      statusEl.textContent = `✗ All ${fail} scrobbles rejected`;
+      statusEl.style.color = 'var(--error)';
+    } else {
+      statusEl.textContent = `${ok} accepted, ${fail} rejected`;
+      statusEl.style.color = 'var(--warn)';
+    }
+
+    // Show error detail if any
+    if (errors.length) {
+      const unique = [...new Set(errors)];
+      // Group by reason for cleaner display
+      const grouped = {};
+      for (const e of unique) {
+        const reason = e.includes(' — ') ? e.split(' — ').slice(-1)[0] : e;
+        grouped[reason] = grouped[reason] || [];
+        grouped[reason].push(e.includes(' — ') ? e.split(' — ')[0] : e);
+      }
+      const lines = Object.entries(grouped).map(([reason, tracks]) =>
+        `${reason}\n  ${tracks.slice(0,5).join('\n  ')}${tracks.length>5 ? `\n  …and ${tracks.length-5} more` : ''}`
+      ).join('\n\n');
+      alert(`Submission issues:\n\n${lines}`);
+    }
+}
+</script>
+
+<!-- Consecutive plays modal -->
+<div class="overlay" id="chain-modal-overlay">
+  <div class="modal" style="width:600px;max-width:95vw">
+    <h2>Consecutive Plays</h2>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:18px;line-height:1.6">
+      Chaining timestamps for <b id="chain-modal-count"></b> from your chosen start date, each offset by track duration.
+    </div>
+    <div class="field-group">
+      <label>Start Date &amp; Time</label>
+      <input type="datetime-local" id="chain-modal-dt" step="1">
+    </div>
+    <div class="field-group">
+      <label>Track Order</label>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+
+        <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:12px 16px;transition:border-color .2s">
+          <input type="radio" name="chain-order" value="tracknum" style="accent-color:var(--accent);margin-top:2px;flex-shrink:0;width:15px;height:15px">
+          <div style="min-width:0">
+            <div style="font-size:13px;font-weight:600;margin-bottom:3px">By track number</div>
+            <div style="font-size:11.5px;color:var(--text-muted);line-height:1.5;white-space:normal">Orders by the T# column. Best when fixing a known album play where track numbers are correct.</div>
+          </div>
+        </label>
+
+        <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:12px 16px;transition:border-color .2s">
+          <input type="radio" name="chain-order" value="fileline" style="accent-color:var(--accent);margin-top:2px;flex-shrink:0;width:15px;height:15px" checked>
+          <div style="min-width:0">
+            <div style="font-size:13px;font-weight:600;margin-bottom:3px">By file order <span style="font-size:10px;color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:1px 6px;margin-left:5px;vertical-align:middle">default</span></div>
+            <div style="font-size:11.5px;color:var(--text-muted);line-height:1.5;white-space:normal">Uses the original line order from the .scrobbler.log. Reflects actual iPod play order regardless of clock state.</div>
+          </div>
+        </label>
+
+        <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:12px 16px;transition:border-color .2s">
+          <input type="radio" name="chain-order" value="selected" style="accent-color:var(--accent);margin-top:2px;flex-shrink:0;width:15px;height:15px">
+          <div style="min-width:0">
+            <div style="font-size:13px;font-weight:600;margin-bottom:3px">By selection order</div>
+            <div style="font-size:11.5px;color:var(--text-muted);line-height:1.5;white-space:normal">Uses the order you checked the boxes. Check entries top-to-bottom in the sequence you want.</div>
+          </div>
+        </label>
+
+      </div>
+    </div>
+    <div id="chain-modal-preview" style="margin-top:8px;display:none">
+      <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:6px">Preview</div>
+      <div class="chain-preview" id="chain-modal-preview-list" style="max-height:160px"></div>
+    </div>
+    <div class="modal-actions" style="margin-top:20px">
+      <button class="secondary" onclick="document.getElementById('chain-modal-overlay').classList.remove('open')">Cancel</button>
+      <button class="primary" id="btn-chain-modal-apply">Apply</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Scrobble submit preview modal -->
+<div class="overlay" id="submit-preview-overlay">
+  <div class="modal" style="width:700px;max-width:95vw">
+    <h2>Review Before Submitting</h2>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.6">
+      Check that the submitted timestamps look correct. <b>As Stored</b> is what's in your log file. <b>Submitted as</b> is what Last.fm will receive after the timezone offset is applied.
+    </div>
+    <div id="submit-tz-note" style="margin-bottom:14px;padding:9px 14px;border-radius:6px;font-size:12px;line-height:1.5"></div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:var(--mono)">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border)">
+            <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Artist</th>
+            <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Track</th>
+            <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">As Stored</th>
+            <th style="text-align:left;padding:6px 10px;color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Submitted as (UTC)</th>
+          </tr>
+        </thead>
+        <tbody id="submit-preview-body"></tbody>
+      </table>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:10px" id="submit-preview-count"></div>
+    <div class="modal-actions" style="margin-top:20px">
+      <button class="secondary" onclick="document.getElementById('submit-preview-overlay').classList.remove('open')">Cancel</button>
+      <button class="primary" id="btn-submit-confirm">Looks good — Submit</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

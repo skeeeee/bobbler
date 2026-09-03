@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bobbler-tray"
+version = "1.0.0"
+description = "System tray app for bobbler — auto-detects iPod and submits scrobbles"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "skeeeee", email = "skeeeee@users.noreply.github.com" }]
+keywords = ["lastfm", "scrobbler", "ipod", "music", "rockbox", "tray"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+
+dependencies = [
+    "bobbler @ git+https://github.com/skeeeee/bobbler#subdirectory=bobbler",
+    "pystray",
+    "Pillow",
+]
+
+[project.urls]
+Homepage = "https://github.com/skeeeee/bobbler/tree/main/bobbler-tray"
+Repository = "https://github.com/skeeeee/bobbler"
+Issues = "https://github.com/skeeeee/bobbler/issues"
+
+[project.scripts]
+bobbler-tray = "bobbler_tray:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bobbler_tray"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "README.md", "LICENSE"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
